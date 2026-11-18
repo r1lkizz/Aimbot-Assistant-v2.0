@@ -699,24 +699,23 @@ local function updatePlayer(player, fc, myPosCached)
         alpha = math.clamp(1 - (dist / S.MaxDistance) * 0.7, 0.3, 1)
     end
 
-    -- ✅ ФИКС БАГА "mod on nil" И "C STACK OVERFLOW"
+    -- ✅ ФИКС ЦВЕТА ЗА СТЕНОЙ (Без крашей)
     local isVisible = true
     if S.WallCheckESP and humanoid.Health > 0 then
-        local shouldCheck = (fc % 3 == 0) -- Проверяем каждый 3-й кадр
+        local shouldCheck = (fc % 3 == 0) -- Проверяем раз в 3 кадра для нагрузки
         if shouldCheck then
-            -- Убрали workspace:Raycast, который падал с ошибкой mod on nil в loadstring.
-            -- Используем безопасную математическую проверку видимости.
-            local head = character:FindFirstChild("Head")
-            if head then
-                local screenPos = Camera:WorldToViewportPoint(head.Position)
-                if screenPos.Z > 0 then
-                    -- Если голова в поле зрения, то считаем, что игрок виден
-                    data._wallVisible = true
-                else
-                    data._wallVisible = false
-                end
+            espRayParams.FilterDescendantsInstances = { LocalPlayer.Character, character }
+            -- Оборачиваем в pcall, чтобы движок не выдал ошибку mod on nil
+            local success, result = pcall(function()
+                return workspace:Raycast(Camera.CFrame.Position, root.Position - Camera.CFrame.Position, espRayParams)
+            end)
+            
+            if success then
+                -- Если result == nil, значит луч не встретил препятствий (игрок виден)
+                data._wallVisible = (result == nil)
             else
-                data._wallVisible = false
+                -- Если pcall поймал внутреннюю ошибку движка, считаем что за стеной
+                data._wallVisible = false 
             end
         end
         isVisible = data._wallVisible
@@ -733,10 +732,12 @@ local function updatePlayer(player, fc, myPosCached)
 
     if S.WallCheckESP then
         if not isVisible then
+            -- 🔴 КРАСНЫЙ (За стеной)
             colorBox = S.ColorHidden; colorBoxFill = S.ColorHidden; colorName = S.ColorHidden
             colorHealth = S.ColorHidden; colorTracer = S.ColorHidden; colorSkeleton = S.ColorHidden
             colorHeadDot = S.ColorHidden; colorChams = S.ColorHidden
         else
+            -- 🟢 ЗЕЛЕНЫЙ (Виден)
             colorBox = S.ColorVisible; colorBoxFill = S.ColorVisible; colorName = S.ColorVisible
             colorHealth = S.ColorVisible; colorTracer = S.ColorVisible; colorSkeleton = S.ColorVisible
             colorHeadDot = S.ColorVisible; colorChams = S.ColorVisible
