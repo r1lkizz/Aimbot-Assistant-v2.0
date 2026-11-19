@@ -141,11 +141,13 @@ local function redeemKey(key)
     if response and response.StatusCode == 200 then
         local decoded = lDecode(response.Body)
         
-        if decoded.success == true then
-            -- Сохраняем ключ при первом успешном входе
-            if writefile then writefile(Config.KeyFileName, key) end
-            return true, "Success" 
-        end
+if decoded.success == true then
+    if writefile then 
+        -- ✅ Сохраняем ключ и текущее время (os.time())
+        writefile(Config.KeyFileName, key .. "\n" .. tostring(os.time())) 
+    end
+    return true, "Success" 
+end
         
         return false, (decoded.message or "Invalid Key")
     end
@@ -154,7 +156,7 @@ local function redeemKey(key)
         return true, "Success (Rate Limited)"
     end
     
-    return false, err or "Server Error"
+    return false, err or "Server Error (THIS IS A BUG JUST PRESS AGAIN GET THE KEY )"
 end
 
 -------------------------------------------------------------------------------
@@ -341,38 +343,58 @@ local function CreateGUI()
     end)
 
        -- ✅ УМНЫЙ АВТО-ЛОГИН
+        -- ✅ УМНЫЙ АВТО-ЛОГИН С КЕШИРОВАНИЕМ
     if isfile and isfile(Config.KeyFileName) then
-        local savedKey = readfile(Config.KeyFileName)
-        if savedKey ~= "" then
-            Status.Text = "Verifying saved key..."
-            Status.TextColor3 = Color3.fromRGB(0, 170, 255)
-            
-            VerifyBtn.Visible = false
-            GetKeyBtn.Visible = false
-            KeyInput.Visible = false
-
-            task.spawn(function()
-                task.wait(1.5) -- Задержка, чтобы не спамить API
-                
-                local ok, success, msg = pcall(function()
-                    return redeemKey(savedKey)
-                end)
-
-                if ok and success then
-                    Status.Text = "Auto-login success! Loading..."
-                    Status.TextColor3 = Color3.fromRGB(0, 255, 100)
-                    task.wait(0.5)
-                    ScreenGui:Destroy()
-                    StartMainScript()
-                else
-                    Status.Text = "Saved key invalid or network error."
-                    Status.TextColor3 = Color3.fromRGB(255, 150, 0)
-                    
-                    VerifyBtn.Visible = true
-                    GetKeyBtn.Visible = true
-                    KeyInput.Visible = true
+        local fileContent = readfile(Config.KeyFileName)
+        local savedKey, savedTime = fileContent:match("([^\n]+)\n?(%d*)")
+        
+        if savedKey and savedKey ~= "" then
+            local isValidCache = false
+            if savedTime and savedTime ~= "" then
+                local timePassed = os.time() - tonumber(savedTime)
+                -- ✅ Кеш действует 1 час (3600 секунд). Если прошло меньше - пускаем без запроса.
+                if timePassed < 3600 then
+                    isValidCache = true
                 end
-            end)
+            end
+
+            if isValidCache then
+                -- Кеш свежий, загружаем сразу
+                Status.Text = "Auto-login (Cached)..."
+                Status.TextColor3 = Color3.fromRGB(0, 255, 100)
+                task.wait(0.3)
+                ScreenGui:Destroy()
+                StartMainScript()
+                return
+            else
+                -- Кеш устарел, проверяем на сервере
+                Status.Text = "Verifying with server..."
+                Status.TextColor3 = Color3.fromRGB(0, 170, 255)
+                VerifyBtn.Visible = false
+                GetKeyBtn.Visible = false
+                KeyInput.Visible = false
+
+                task.spawn(function()
+                    local ok, success, msg = pcall(function()
+                        return redeemKey(savedKey)
+                    end)
+
+                    if ok and success then
+                        Status.Text = "Auto-login success! Loading..."
+                        Status.TextColor3 = Color3.fromRGB(0, 255, 100)
+                        task.wait(0.5)
+                        ScreenGui:Destroy()
+                        StartMainScript()
+                    else
+                        Status.Text = "Subscription expired or invalid."
+                        Status.TextColor3 = Color3.fromRGB(255, 150, 0)
+                        VerifyBtn.Visible = true
+                        GetKeyBtn.Visible = true
+                        KeyInput.Visible = true
+                        if delfile then pcall(function() delfile(Config.KeyFileName) end) end
+                    end
+                end)
+            end
         end
     end
 end
