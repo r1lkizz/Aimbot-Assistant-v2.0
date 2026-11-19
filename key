@@ -27,7 +27,7 @@ local Config = {
     MainGuiName     = "", -- Имя GUI основного скрипта (чтобы не открывать дважды)
 
     -- [7] Hub Information & UI Text
-    HubName         = "Aimbot Assistant v2.1", -- ✅ Название твоего скрипта
+    HubName         = "Aimbot Assistant v2.15", -- ✅ Название твоего скрипта
     HubDescription  = "Enter your key to access the script." -- ✅ Описание
 }
 
