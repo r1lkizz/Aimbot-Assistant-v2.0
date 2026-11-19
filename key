@@ -7,7 +7,7 @@ local Config = {
     Secret          = "AimbotAssistant_Secret_2024", -- ✅ Оставь это, это защита от копирования скрипта
     
     -- [3] Scripts & Links
-    MainScriptURL   = "https://raw.githubusercontent.com/r1lkizz/Aimbot-Assistant-v2.0/refs/heads/main/script", -- ✅ Твоя ссылка
+    MainScriptURL   = "", -- ✅ Твоя ссылка
     
     -- [4] Social Media Settings (Set to true to show, false to hide)
     ShowDiscord     = true, -- ✅ Включил, если хочешь показать кнопку Discord
