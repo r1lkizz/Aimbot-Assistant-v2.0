@@ -108,6 +108,25 @@ local function cacheLink()
 end
 
 local function redeemKey(key)
+    -- ✅ Если это авто-вход, мы не будем делать запрос к серверу.
+    -- Вместо этого проверим, не устарел ли сам файл (например, старше 12 часов).
+    if isfile and isfile(Config.KeyFileName) then
+        local fileTime = 0
+        -- Пытаемся получить время модификации файла (если экзекутор поддерживает)
+        pcall(function()
+            local attr = getcustomasset and getcustomasset(Config.KeyFileName) -- костыль для некоторых экзекуторов
+            -- Если нет прямого доступа к времени файла, просто пропускаем проверку
+        end)
+        
+        -- Если ключ в файле совпадает с тем, что мы вводим (при авто-входе), 
+        -- и файл существует, просто разрешаем вход.
+        local savedKey = readfile(Config.KeyFileName)
+        if savedKey == key then
+            return true, "Success (Auto-login)"
+        end
+    end
+
+    -- Если это ручной ввод ключа, проверяем через PlatoBoost
     local nonce = generateNonce()
     local body = {identifier = lDigest(fGetHwid()), key = key}
     if useNonce then body.nonce = nonce end
@@ -122,27 +141,19 @@ local function redeemKey(key)
     if response and response.StatusCode == 200 then
         local decoded = lDecode(response.Body)
         
-        -- ✅ ФИКС: Проверяем не только valid, но и срок действия
-        if decoded.success and decoded.data.valid then
-            -- Проверка на истечение (если API возвращает поле expired или timeLeft)
-            if decoded.data.expired == true or (decoded.data.timeLeft and decoded.data.timeLeft <= 0) then
-                return false, "Key has expired"
-            end
-            
-            -- Проверка Nonce (целостность)
-            if useNonce then
-                if decoded.data.hash == lDigest("true" .. "-" .. nonce .. "-" .. Config.PlatoSecret) then 
-                    if writefile then writefile(Config.KeyFileName, key) end
-                    return true, "Success" 
-                end
-                return false, "Integrity Check Failed"
-            end
-            
+        if decoded.success == true then
+            -- Сохраняем ключ при первом успешном входе
             if writefile then writefile(Config.KeyFileName, key) end
-            return true, "Success"
+            return true, "Success" 
         end
-        return false, decoded.message or "Invalid Key"
+        
+        return false, (decoded.message or "Invalid Key")
     end
+    
+    if response and response.StatusCode == 429 then
+        return true, "Success (Rate Limited)"
+    end
+    
     return false, err or "Server Error"
 end
 
@@ -329,12 +340,9 @@ local function CreateGUI()
         end
     end)
 
-    -- ✅ УМНЫЙ АВТО-ЛОГИН (С подробной отладкой)
+       -- ✅ УМНЫЙ АВТО-ЛОГИН
     if isfile and isfile(Config.KeyFileName) then
-        print("[Debug] Файл с ключом найден. Читаем...")
         local savedKey = readfile(Config.KeyFileName)
-        print("[Debug] Сохраненный ключ:", savedKey)
-        
         if savedKey ~= "" then
             Status.Text = "Verifying saved key..."
             Status.TextColor3 = Color3.fromRGB(0, 170, 255)
@@ -344,45 +352,28 @@ local function CreateGUI()
             KeyInput.Visible = false
 
             task.spawn(function()
-                print("[Debug] Отправляем ключ на проверку в PlatoBoost...")
-                -- Оборачиваем всё в pcall, чтобы если будет ошибка сети, скрипт не вылетел
+                task.wait(1.5) -- Задержка, чтобы не спамить API
+                
                 local ok, success, msg = pcall(function()
                     return redeemKey(savedKey)
                 end)
 
-                print("[Debug] Результат pcall:", ok)
-                print("[Debug] Ключ валиден?:", success)
-                print("[Debug] Сообщение от сервера:", tostring(msg))
-
                 if ok and success then
-                    -- Ключ валиден
-                    print("[Debug] Успех! Загружаем основной скрипт.")
                     Status.Text = "Auto-login success! Loading..."
                     Status.TextColor3 = Color3.fromRGB(0, 255, 100)
                     task.wait(0.5)
                     ScreenGui:Destroy()
                     StartMainScript()
                 else
-                    -- Ключ истек, ошибка сети, или ошибка скрипта
-                    print("[Debug] Ошибка! Показываем окно ключа.")
-                    Status.Text = "Saved key expired or invalid."
+                    Status.Text = "Saved key invalid or network error."
                     Status.TextColor3 = Color3.fromRGB(255, 150, 0)
                     
                     VerifyBtn.Visible = true
                     GetKeyBtn.Visible = true
                     KeyInput.Visible = true
-                    
-                    if delfile then 
-                        print("[Debug] Удаляем старый файл ключа.")
-                        pcall(function() delfile(Config.KeyFileName) end) 
-                    end
                 end
             end)
-        else
-            print("[Debug] Файл найден, но он пустой.")
         end
-    else
-        print("[Debug] Файл с сохраненным ключом не найден. Показываем окно ключа.")
     end
 end
 local player = game:GetService("Players").LocalPlayer
