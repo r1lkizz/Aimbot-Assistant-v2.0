@@ -1,5 +1,5 @@
 -- ============================================================================
---  AIMBOT ASSISTANT v2.1
+--  AIMBOT ASSISTANT v2.15
 --  ESP · Aimbot · Silent Aim · Movement · Smooth UI · Configs
 -- ============================================================================
 
@@ -18,7 +18,7 @@ if not okLib or not Library then
 end
 
 local Window = Library:CreateWindow({
-    Title = "Aimbot Assistant v2.1",
+    Title = "Aimbot Assistant v2.15",
     Logo = "AA",
     ToggleKey = Enum.KeyCode.LeftAlt,
     SidebarKey = Enum.KeyCode.B,
@@ -126,8 +126,9 @@ local function getFont()
     return _cachedFont
 end
 
-if type(checkcaller) ~= "function" then
-    checkcaller = function() return false end
+local _checkcaller = checkcaller
+if type(_checkcaller) ~= "function" then
+    _checkcaller = function() return false end
 end
 
 local fovCircle = Drawing.new("Circle")
@@ -1013,6 +1014,128 @@ local AimPage      = Window:AddPage({ Name = "Aimbot", Section = "COMBAT", Icon 
 local MovementPage = Window:AddPage({ Name = "Movement", Section = "MOVEMENT", Icon = "zap", Description = "Character movement, fly, noclip" })
 local ConfigPage   = Window:AddPage({ Name = "Config", Section = "SETTINGS", Icon = "cog", Description = "Save & Load" })
 
+local MiscPage     = Window:AddPage({ Name = "Misc", Section = "UTILITY", Icon = "settings", Description = "Server Hop & Themes" })
+
+-- ─── 21. Misc Functions ──────────────────────────────────────────────────
+local MiscServerSec = MiscPage:AddSection("Server")
+local MiscThemeSec  = MiscPage:AddSection("Appearance")
+
+-- ✅ ФУНКЦИЯ ДЛЯ СОХРАНЕНИЯ СКРИПТА ПЕРЕД ТЕЛЕПОРТОМ
+local function QueueScript()
+    local scriptStr = game:HttpGet("https://raw.githubusercontent.com/r1lkizz/Aimbot-Assistant-v2.0/refs/heads/main/script")
+    if queue_on_teleport then
+        queue_on_teleport(scriptStr)
+    elseif queueonteleport then
+        queueonteleport(scriptStr)
+    elseif syn and syn.queue_on_teleport then
+        syn.queue_on_teleport(scriptStr)
+    end
+end
+
+-- ✅ ОБЩАЯ ФУНКЦИЯ ДЛЯ ПОИСКА СЕРВЕРОВ (Обновленная)
+local function HopToServer(filterFunc)
+    notify("Misc", "Searching for server...", "info", 3)
+    local url = "https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"
+    local ok, res = pcall(function() return game:HttpGet(url) end)
+    
+    if ok and res then
+        local success, data = pcall(function() return HttpService:JSONDecode(res) end)
+        if success and data and data.data then
+            local bestServer = nil
+            local maxPlayersCount = -1
+
+            for _, server in ipairs(data.data) do
+                if server.id ~= game.JobId then
+                    -- 1. Сначала ищем идеальное совпадение по фильтру (например, 1-3 свободных места)
+                    if filterFunc(server.playing, server.maxPlayers) then
+                        notify("Misc", "Joining server...", "success", 2)
+                        task.wait(0.5)
+                        QueueScript()
+                        game:GetService("TeleportService"):TeleportToPlaceInstance(game.PlaceId, server.id, LocalPlayer)
+                        return
+                    end
+                    
+                    -- 2. Запоминаем сервер с максимальным количеством игроков (на случай, если идеального нет)
+                    if server.playing > maxPlayersCount then
+                        maxPlayersCount = server.playing
+                        bestServer = server
+                    end
+                end
+            end
+
+            -- Если идеального не нашли, но есть "почти полный" — заходим туда
+            if bestServer then
+                notify("Misc", "No perfect match. Joining the fullest available server.", "info", 3)
+                task.wait(0.5)
+                QueueScript()
+                game:GetService("TeleportService"):TeleportToPlaceInstance(game.PlaceId, bestServer.id, LocalPlayer)
+                return
+            end
+        end
+    end
+    notify("Misc", "No suitable servers found.", "error", 3)
+end
+
+-- 1. Rejoin
+MiscServerSec:AddButton({
+    Name = "Rejoin",
+    Description = "Rejoin the current server",
+    Callback = function()
+        notify("Misc", "Rejoining...", "info", 3)
+        task.wait(0.5)
+        QueueScript()
+        game:GetService("TeleportService"):TeleportToPlaceInstance(game.PlaceId, game.JobId, LocalPlayer)
+    end
+})
+
+-- 2. Server Hop (Любой свободный)
+MiscServerSec:AddButton({
+    Name = "Server Hop",
+    Description = "Join any random server",
+    Callback = function()
+        HopToServer(function(playing, maxPlayers)
+            return playing < maxPlayers
+        end)
+    end
+})
+
+-- 3. Join Small Server (1-5 игроков)
+MiscServerSec:AddButton({
+    Name = "Join Small Server",
+    Description = "Find a server with 1-5 players",
+    Callback = function()
+        HopToServer(function(playing, maxPlayers)
+            return playing > 0 and playing <= 5
+        end)
+    end
+})
+
+-- 4. Join Full Server (1-3 свободных места)
+MiscServerSec:AddButton({
+    Name = "Join Full Server",
+    Description = "Find a server with 1-3 free slots",
+    Callback = function()
+        HopToServer(function(playing, maxPlayers)
+            return playing >= (maxPlayers - 3) and playing < maxPlayers
+        end)
+    end
+})
+
+-- 5. UI Theme
+local themes = {"Default", "Ocean", "Rose", "Violet", "Amber"}
+MiscThemeSec:AddDropdown({
+    Name = "UI Theme",
+    Description = "Change the interface color scheme",
+    Options = themes,
+    Default = "Default",
+    Callback = function(selected)
+        local theme = selected
+        if type(selected) == "table" then for k in pairs(selected) do theme = k; break end end
+        pcall(function() if Library.SetTheme then Library:SetTheme(theme) end end)
+        notify("Appearance", "Theme changed to: " .. tostring(theme), "success", 3)
+    end
+})
+
 local VisualsSec      = ESPPage:AddSection("Visuals")
 local ColorsSec       = ESPPage:AddSection("Team / Enemy Colors")
 local CustomColorsSec = ESPPage:AddSection("Individual Colors")
@@ -1666,7 +1789,7 @@ end)
 -- ─── 20. Welcome ───────────────────────────────────────────────────────────
 pcall(function()
     Window:Notify({
-        Title = "Aimbot Assistant v2.1",
+        Title = "Aimbot Assistant v2.15",
         Text = "dsc.gg/HKBq4mHSvW",
         Type = "success",
         Duration = 10,
@@ -1677,7 +1800,7 @@ while true do
 task.wait(600)
 pcall(function()
     Window:Notify({
-        Title = "Aimbot Assistant v2.1",
+        Title = "Aimbot Assistant v2.15",
         Text = "dsc.gg/HKBq4mHSvW",
         Type = "success",
         Duration = 10,
